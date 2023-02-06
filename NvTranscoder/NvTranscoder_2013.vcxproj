@@ -145,7 +145,7 @@
     <ClCompile Include="..\common\src\dynlink_nvcuvid.cpp" />
     <ClCompile Include="..\common\src\NvHWEncoder.cpp" />
     <ClCompile Include="FrameQueue.cpp" />
-    <ClCompile Include="NvTranscoder.cpp" />
+    <ClCompile Include="NvTranscoder_main.cpp" />
     <ClCompile Include="VideoEncoder.cpp" />
     <ClCompile Include="VideoDecoder.cpp" />
   </ItemGroup>
