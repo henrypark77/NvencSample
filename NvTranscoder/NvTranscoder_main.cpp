@@ -12,14 +12,87 @@
 #include "VideoDecoder.h"
 #include "VideoEncoder.h"
 #include "../common/inc/nvUtils.h"
+#include <vector>
 
 #ifdef _WIN32
+
+extern std::vector<CUVIDSOURCEDATAPACKET*> gpFrameQueue;
+char* pSourcePath = 0;
+static int CUDAAPI HandleVideoData_main(void* pUserData, CUVIDSOURCEDATAPACKET* pPacket)
+{
+    assert(pUserData);
+    CudaDecoder* pDecoder = (CudaDecoder*)pUserData;
+
+    CUVIDSOURCEDATAPACKET* pPacket_temp = new CUVIDSOURCEDATAPACKET;
+
+    pPacket_temp->flags = pPacket->flags;
+    pPacket_temp->payload_size = pPacket->payload_size;
+    pPacket_temp->timestamp = pPacket->timestamp;
+    pPacket_temp->payload = new unsigned char[pPacket->payload_size];
+    memcpy((void*)pPacket_temp->payload, pPacket->payload, pPacket->payload_size);
+    gpFrameQueue.insert(gpFrameQueue.begin(), pPacket_temp);
+
+    Sleep(1);
+    printf(".");
+
+    CUresult oResult = CUDA_SUCCESS;
+    //CUresult oResult = cuvidParseVideoData(pDecoder->m_videoParser, pPacket);
+    if (oResult != CUDA_SUCCESS) {
+        printf("error!\n");
+    }
+
+    return 1;
+}
+
 DWORD WINAPI DecodeProc(LPVOID lpParameter)
 {
     CudaDecoder* pDecoder = (CudaDecoder*)lpParameter;
     pDecoder->Start();
 
     return 0;
+}
+
+extern CUVIDEOFORMAT oFormat;
+DWORD WINAPI DemuxProc(LPVOID lpParameter)
+{
+    CUresult oResult;
+    CudaDecoder* pDecoder = (CudaDecoder*)lpParameter;
+
+    //init video source
+    CUVIDSOURCEPARAMS oVideoSourceParameters;
+    memset(&oVideoSourceParameters, 0, sizeof(CUVIDSOURCEPARAMS));
+    oVideoSourceParameters.pUserData = pDecoder;
+    oVideoSourceParameters.pfnVideoDataHandler = HandleVideoData_main;
+    oVideoSourceParameters.pfnAudioDataHandler = NULL;
+
+    oResult = cuvidCreateVideoSource(&pDecoder->m_videoSource, pSourcePath, &oVideoSourceParameters);
+    if (oResult != CUDA_SUCCESS) {
+        fprintf(stderr, "cuvidCreateVideoSource failed\n");
+        fprintf(stderr, "Please check if the path exists, or the video is a valid H264 file\n");
+        exit(-1);
+    }
+
+    //init video decoder
+    cuvidGetSourceVideoFormat(pDecoder->m_videoSource, &oFormat, 0);
+
+    if (oFormat.codec != cudaVideoCodec_H264) {
+        fprintf(stderr, "The sample only supports H264 input video!\n");
+        exit(-1);
+    }
+
+    if (oFormat.chroma_format != cudaVideoChromaFormat_420) {
+        fprintf(stderr, "The sample only supports 4:2:0 chroma!\n");
+        exit(-1);
+    }
+
+    oResult = cuvidSetVideoSourceState(pDecoder->m_videoSource, cudaVideoState_Started);
+
+    while (cuvidGetVideoSourceState(pDecoder->m_videoSource) == cudaVideoState_Started)
+    {
+        Sleep(100);
+    };
+
+    return 1;
 }
 
 #else
@@ -152,8 +225,14 @@ int main(int argc, char* argv[])
     __cu(cuCtxPopCurrent(&curCtx));
     __cu(cuvidCtxLockCreate(&ctxLock, curCtx));
 
+    //std::unique_ptr<FFmpegDemuxer> demuxer(new FFmpegDemuxer(m_pProvider));
+
+    pSourcePath = encodeConfig.inputFileName;
+
     CudaDecoder* pDecoder   = new CudaDecoder;
     FrameQueue* pFrameQueue = new CUVIDFrameQueue(ctxLock);
+    
+    HANDLE DemuxThread = CreateThread(NULL, 0, DemuxProc, (LPVOID)pDecoder, 0, NULL);
     pDecoder->InitVideoDecoder(encodeConfig.inputFileName, ctxLock, pFrameQueue, encodeConfig.width, encodeConfig.height);
 
     int decodedW, decodedH, decodedFRN, decodedFRD, isProgressive;
@@ -229,6 +308,7 @@ int main(int argc, char* argv[])
 
     //start decoding thread
 #ifdef _WIN32
+    
     HANDLE decodeThread = CreateThread(NULL, 0, DecodeProc, (LPVOID)pDecoder, 0, NULL);
 #else
     pthread_t pid;
@@ -278,7 +358,9 @@ int main(int argc, char* argv[])
     pEncoder->EncodeFrame(NULL, NV_ENC_PIC_STRUCT_FRAME, true);
 
 #ifdef _WIN32
+    WaitForSingleObject(DemuxThread, INFINITE);
     WaitForSingleObject(decodeThread, INFINITE);
+    
 #else
     pthread_join(pid, NULL);
 #endif

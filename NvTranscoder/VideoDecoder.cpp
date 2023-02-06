@@ -20,9 +20,11 @@ static const char* getProfileName(int profile)
 }
 
 std::vector<CUVIDSOURCEDATAPACKET*> gpFrameQueue;
+CUVIDEOFORMAT oFormat;
 
 static int CUDAAPI HandleVideoData(void* pUserData, CUVIDSOURCEDATAPACKET* pPacket)
 {
+#if 0
     assert(pUserData);
     CudaDecoder* pDecoder = (CudaDecoder*)pUserData;
 
@@ -34,7 +36,7 @@ static int CUDAAPI HandleVideoData(void* pUserData, CUVIDSOURCEDATAPACKET* pPack
     pPacket_temp->payload = new unsigned char[pPacket->payload_size];
     memcpy((void*)pPacket_temp->payload, pPacket->payload, pPacket->payload_size);
     gpFrameQueue.insert(gpFrameQueue.begin(), pPacket_temp);
-
+#endif
     CUresult oResult = CUDA_SUCCESS;
     //CUresult oResult = cuvidParseVideoData(pDecoder->m_videoParser, pPacket);
     if(oResult != CUDA_SUCCESS) {
@@ -128,7 +130,7 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
     oVideoSourceParameters.pfnVideoDataHandler = HandleVideoData;
     oVideoSourceParameters.pfnAudioDataHandler = HandleAudioData;
     //oVideoSourceParameters.pfnAudioDataHandler = NULL;
-
+#if 0
     oResult = cuvidCreateVideoSource(&m_videoSource, videoPath, &oVideoSourceParameters);
     if (oResult != CUDA_SUCCESS) {
         fprintf(stderr, "cuvidCreateVideoSource failed\n");
@@ -149,12 +151,21 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
         fprintf(stderr, "The sample only supports 4:2:0 chroma!\n");
         exit(-1);
     }
-
+#else
+    //Sleep(1000);
+#endif
+    while (1)
+    {
+        if (0 != oFormat.coded_width)
+            break;
+        else
+            Sleep(1000);
+    }
     CUVIDDECODECREATEINFO oVideoDecodeCreateInfo;
     memset(&oVideoDecodeCreateInfo, 0, sizeof(CUVIDDECODECREATEINFO));
     oVideoDecodeCreateInfo.CodecType = oFormat.codec;
-    oVideoDecodeCreateInfo.ulWidth   = oFormat.coded_width;
-    oVideoDecodeCreateInfo.ulHeight  = oFormat.coded_height;
+    oVideoDecodeCreateInfo.ulWidth = oFormat.coded_width;
+    oVideoDecodeCreateInfo.ulHeight = oFormat.coded_height;
     oVideoDecodeCreateInfo.ulNumDecodeSurfaces = FrameQueue::cnMaximumSize;
 
     // Limit decode memory to 24MB (16M pixels at 4:2:0 = 24M bytes)
@@ -215,6 +226,7 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
 void CudaDecoder::Start()
 {
     CUresult oResult;
+    ///Sleep(1000);
 
     oResult = cuvidSetVideoSourceState(m_videoSource, cudaVideoState_Started);
     assert(oResult == CUDA_SUCCESS);
@@ -230,11 +242,12 @@ void CudaDecoder::Start()
             CUresult oResult = cuvidParseVideoData(m_videoParser, pPacket);
             if (oResult == CUDA_SUCCESS)
             {
-                printf("_");
+                printf("size = %d\n", pPacket->payload_size);
             }
             delete pPacket->payload;
             delete pPacket;
         }
+        Sleep(10);
     };
 
     m_bFinish = true;
