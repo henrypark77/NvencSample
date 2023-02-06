@@ -1,0 +1,15 @@
+﻿################################################################################
+# 이 .gitignore 파일은 Microsoft(R) Visual Studio에서 자동으로 만들어졌습니다.
+################################################################################
+
+/NvEncoderPerf/x64/Debug
+/NvEncoderLowLatency/x64/Debug
+/NvEncoderD3DInterop/x64/Debug
+/NvEncoderCudaInterop/x64/Debug
+/NvEncoder/x64/Debug
+/NvDecodeGL/x64/Debug
+/NvDecodeD3D9/x64/Debug
+/NvDecodeD3D11/x64/Debug
+/bin/x64/Debug
+/.vs/Samples_vs2013/v16
+/NvTranscoder/x64/Debug
