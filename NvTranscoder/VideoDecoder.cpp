@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include "VideoDecoder.h"
-
+#include <vector>
 static const char* getProfileName(int profile)
 {
     switch (profile) {
@@ -19,18 +19,44 @@ static const char* getProfileName(int profile)
     return "Unknown Profile";
 }
 
+std::vector<CUVIDSOURCEDATAPACKET*> gpFrameQueue;
+
 static int CUDAAPI HandleVideoData(void* pUserData, CUVIDSOURCEDATAPACKET* pPacket)
 {
     assert(pUserData);
     CudaDecoder* pDecoder = (CudaDecoder*)pUserData;
 
-    CUresult oResult = cuvidParseVideoData(pDecoder->m_videoParser, pPacket);
+    CUVIDSOURCEDATAPACKET* pPacket_temp = new CUVIDSOURCEDATAPACKET;
+
+    pPacket_temp->flags = pPacket->flags;
+    pPacket_temp->payload_size = pPacket->payload_size;
+    pPacket_temp->timestamp = pPacket->timestamp;
+    pPacket_temp->payload = new unsigned char[pPacket->payload_size];
+    memcpy((void*)pPacket_temp->payload, pPacket->payload, pPacket->payload_size);
+    gpFrameQueue.insert(gpFrameQueue.begin(), pPacket_temp);
+
+    CUresult oResult = CUDA_SUCCESS;
+    //CUresult oResult = cuvidParseVideoData(pDecoder->m_videoParser, pPacket);
     if(oResult != CUDA_SUCCESS) {
         printf("error!\n");
     }
 
     return 1;
 }
+
+static int CUDAAPI HandleAudioData(void* pUserData, CUVIDSOURCEDATAPACKET* pPacket)
+{
+    assert(pUserData);
+    CudaDecoder* pDecoder = (CudaDecoder*)pUserData;
+
+    CUresult oResult = CUDA_SUCCESS;//cuvidParseVideoData(pDecoder->m_videoParser, pPacket);
+    if (oResult != CUDA_SUCCESS) {
+        printf("error!\n");
+    }
+
+    return 1;
+}
+
 
 static int CUDAAPI HandleVideoSequence(void* pUserData, CUVIDEOFORMAT* pFormat)
 {
@@ -64,6 +90,7 @@ static int CUDAAPI HandlePictureDisplay(void* pUserData, CUVIDPARSERDISPINFO* pP
     CudaDecoder* pDecoder = (CudaDecoder*)pUserData;
     pDecoder->m_pFrameQueue->enqueue(pPicParams);
     pDecoder->m_decodedFrames++;
+    printf(".");
 
     return 1;
 }
@@ -79,6 +106,7 @@ CudaDecoder::~CudaDecoder(void)
     if(m_videoDecoder) cuvidDestroyDecoder(m_videoDecoder);
     if(m_videoParser)  cuvidDestroyVideoParser(m_videoParser);
     if(m_videoSource)  cuvidDestroyVideoSource(m_videoSource);
+
 }
 
 void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock, FrameQueue* pFrameQueue,
@@ -98,7 +126,8 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
     memset(&oVideoSourceParameters, 0, sizeof(CUVIDSOURCEPARAMS));
     oVideoSourceParameters.pUserData = this;
     oVideoSourceParameters.pfnVideoDataHandler = HandleVideoData;
-    oVideoSourceParameters.pfnAudioDataHandler = NULL;
+    oVideoSourceParameters.pfnAudioDataHandler = HandleAudioData;
+    //oVideoSourceParameters.pfnAudioDataHandler = NULL;
 
     oResult = cuvidCreateVideoSource(&m_videoSource, videoPath, &oVideoSourceParameters);
     if (oResult != CUDA_SUCCESS) {
@@ -190,10 +219,29 @@ void CudaDecoder::Start()
     oResult = cuvidSetVideoSourceState(m_videoSource, cudaVideoState_Started);
     assert(oResult == CUDA_SUCCESS);
 
-    while(cuvidGetVideoSourceState(m_videoSource) == cudaVideoState_Started);
+    while (cuvidGetVideoSourceState(m_videoSource) == cudaVideoState_Started)
+    {
+        //cuvidParseVideoData()
+        CUVIDSOURCEDATAPACKET* pPacket = NULL;
+        if (!gpFrameQueue.empty())
+        {
+            pPacket = gpFrameQueue.back();
+            gpFrameQueue.pop_back();
+            CUresult oResult = cuvidParseVideoData(m_videoParser, pPacket);
+            if (oResult == CUDA_SUCCESS)
+            {
+                printf("_");
+            }
+            delete pPacket->payload;
+            delete pPacket;
+        }
+    };
 
     m_bFinish = true;
 
+    printf("\n");
+    
+    getchar();
     m_pFrameQueue->endDecode();
 }
 

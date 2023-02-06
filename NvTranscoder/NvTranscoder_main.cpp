@@ -271,6 +271,8 @@ int main(int argc, char* argv[])
             cuvidUnmapVideoFrame(pDecoder->GetDecoder(), dMappedFrame);
             pFrameQueue->releaseFrame(&pInfo);
        }
+       else
+           Sleep(1);
     }
 
     pEncoder->EncodeFrame(NULL, NV_ENC_PIC_STRUCT_FRAME, true);
