@@ -92,6 +92,7 @@ typedef struct _EncodeInputBuffer
     void*             nvRegisteredResource;
     NV_ENC_INPUT_PTR  hInputSurface;
     NV_ENC_BUFFER_FORMAT bufferFmt;
+    BYTE* pSystemPtr;
 }EncodeInputBuffer;
 
 typedef struct _EncodeOutputBuffer

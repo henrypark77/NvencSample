@@ -192,8 +192,8 @@ void SaveFrameAsYUV(FILE* fpWriteYUV, unsigned char* pdst,
     {
         for (x = 0; x < width_2; x++)
         {
-            pdst[xy_offset + y * (width_2)+x] = puv[x * 2];
-            pdst[xy_offset + uvoffs + y * (width_2)+x] = puv[x * 2 + 1];
+            pdst[xy_offset + y * (width_2)+x] = puv[x * 2];            
+            pdst[xy_offset + uvoffs + y * (width_2)+x] = puv[x * 2 + 1];            
         }
         puv += pitch;
     }
@@ -429,7 +429,7 @@ int main(int argc, char* argv[])
             if (fpYUV)
             {
                 //fwrite(&g_pFrameYUV[0], 1, decodedW * decodedH * 3 / 2, fpYUV);
-                SaveFrameAsYUV(fpYUV, g_pFrameYUV[1], g_pFrameYUV[0], decodedW, decodedH, pitch);
+                SaveFrameAsYUV(fpYUV, g_pFrameYUV[1], g_pFrameYUV[0], encodeConfig.width, stEncodeConfig.height, pitch);
             }
 #endif
 
