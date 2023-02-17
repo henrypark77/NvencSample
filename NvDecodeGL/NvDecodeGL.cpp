@@ -1289,7 +1289,7 @@ bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbI
             // map OpenGL PBO or CUDA memory
             size_t nTexturePitch = 0;
 
-            // If we are Encoding and this is the 1st Frame, we make sure we allocate system memory for readbacks
+            // If we are decoding and this is the 1st Frame, we make sure we allocate system memory for readbacks
             if (g_bReadback && g_bFirstFrame && g_ReadbackSID)
             {
                 CUresult result;
@@ -1316,7 +1316,7 @@ bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbI
 
                 if (result != CUDA_SUCCESS)
                 {
-                    printf("cuMemAllocHost returned %d\n", (int)result);
+                    printf("cuMemcpyDtoHAsync returned %d\n", (int)result);
                     checkCudaErrors(result);
                 }
             }

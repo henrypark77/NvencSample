@@ -167,6 +167,44 @@ void PrintHelp()
         );
 }
 
+
+void SaveFrameAsYUV(FILE* fpWriteYUV, unsigned char* pdst,
+    const unsigned char* psrc,
+    int width, int height, int pitch)
+{
+    int x, y, width_2, height_2;
+    int xy_offset = width * height;
+    int uvoffs = (width / 2) * (height / 2);
+    const unsigned char* py = psrc;
+    const unsigned char* puv = psrc + height * pitch;
+
+    // luma
+    for (y = 0; y < height; y++)
+    {
+        memcpy(&pdst[y * width], py, width);
+        py += pitch;
+    }
+
+    // De-interleave chroma
+    width_2 = width >> 1;
+    height_2 = height >> 1;
+    for (y = 0; y < height_2; y++)
+    {
+        for (x = 0; x < width_2; x++)
+        {
+            pdst[xy_offset + y * (width_2)+x] = puv[x * 2];
+            pdst[xy_offset + uvoffs + y * (width_2)+x] = puv[x * 2 + 1];
+        }
+        puv += pitch;
+    }
+
+    fwrite(pdst, 1, width * height + (width * height) / 2, fpWriteYUV);
+}
+
+
+
+#define ENABLE_DECODED_FRAME_SAVE
+
 int main(int argc, char* argv[])
 {
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
@@ -219,6 +257,23 @@ int main(int argc, char* argv[])
     CUdevice device;
     __cu(cuDeviceGet(&device, encodeConfig.deviceID));
     __cu(cuCtxCreate(&cudaCtx, CU_CTX_SCHED_AUTO, device));
+
+    CUresult ret = CUDA_SUCCESS, result = CUDA_SUCCESS;
+#ifdef ENABLE_DECODED_FRAME_SAVE
+    CUstream           g_ReadbackSID = 0;
+    ret = cuStreamCreate(&g_ReadbackSID, 0);
+
+    printf("  CUDA Streams (%s) <g_ReadbackSID = %p>\n", ((g_ReadbackSID == 0) ? "Disabled" : "Enabled"), g_ReadbackSID);
+
+    BYTE* g_pFrameYUV[2] = { NULL, };    
+    FILE* fpYUV = fopen("Decoded.yuv", "wb");
+
+    if (NULL == g_pFrameYUV[0])
+    {
+        result = cuMemAllocHost((void**)&g_pFrameYUV[0], (2432 * 1080 + 2432 * 1080 / 2));
+        result = cuMemAllocHost((void**)&g_pFrameYUV[1], (2432 * 1080 + 2432 * 1080 / 2));        
+    }
+#endif
 
     CUcontext curCtx;
     CUvideoctxlock ctxLock;
@@ -315,22 +370,27 @@ int main(int argc, char* argv[])
     pthread_create(&pid, NULL, DecodeProc, (void*)pDecoder);
 #endif
 
+
     //start encoding thread
     int frmProcessed = 0;
     int frmActual = 0;
     while(!(pFrameQueue->isEndOfDecode() && pFrameQueue->isEmpty()) ) {
 
+        CCtxAutoLock lck(ctxLock);
+        // Push the current CUDA context (only if we are using CUDA decoding path)
+        CUresult result = cuCtxPushCurrent(curCtx);
+
         CUVIDPARSERDISPINFO pInfo;
-        if(pFrameQueue->dequeue(&pInfo)) {
+        if (pFrameQueue->dequeue(&pInfo)) {
             CUdeviceptr dMappedFrame = 0;
             unsigned int pitch;
             CUVIDPROCPARAMS oVPP = { 0 };
             oVPP.progressive_frame = pInfo.progressive_frame;
             oVPP.second_field = 0;
             oVPP.top_field_first = pInfo.top_field_first;
-            oVPP.unpaired_field = (pInfo.progressive_frame == 1 || pInfo.repeat_first_field <= 1);
+            oVPP.unpaired_field = 0;// pInfo.repeat_first_field <= 0;//(pInfo.progressive_frame == 1 || pInfo.repeat_first_field <= 1);
 
-            cuvidMapVideoFrame(pDecoder->GetDecoder(), pInfo.picture_index, &dMappedFrame, &pitch, &oVPP);
+            result = cuvidMapVideoFrame(pDecoder->GetDecoder(), pInfo.picture_index, &dMappedFrame, &pitch, &oVPP);
 
             EncodeFrameConfig stEncodeConfig = { 0 };
             NV_ENC_PIC_STRUCT picType = (pInfo.progressive_frame || pInfo.repeat_first_field >= 2 ? NV_ENC_PIC_STRUCT_FRAME :
@@ -348,8 +408,31 @@ int main(int argc, char* argv[])
             }
             frmProcessed++;
 
+#ifdef ENABLE_DECODED_FRAME_SAVE            
+            cuvidCtxLock(ctxLock, 0);
+
+            result = cuMemcpyDtoHAsync(g_pFrameYUV[0], dMappedFrame, (pitch * stEncodeConfig.height * 3 / 2), g_ReadbackSID);
+            //result = cuMemcpyDtoH(&g_pFrameYUV[0], dMappedFrame, (pitch * decodedH * 3 / 2));
+
+            if (result != CUDA_SUCCESS)
+            {
+                printf("cuMemAllocHost returned %d\n", (int)result);
+            }
+            cuvidCtxUnlock(ctxLock, 0);
+#endif
+
             cuvidUnmapVideoFrame(pDecoder->GetDecoder(), dMappedFrame);
             pFrameQueue->releaseFrame(&pInfo);
+
+#ifdef ENABLE_DECODED_FRAME_SAVE
+            cuStreamSynchronize(g_ReadbackSID);
+            if (fpYUV)
+            {
+                //fwrite(&g_pFrameYUV[0], 1, decodedW * decodedH * 3 / 2, fpYUV);
+                SaveFrameAsYUV(fpYUV, g_pFrameYUV[1], g_pFrameYUV[0], decodedW, decodedH, pitch);
+            }
+#endif
+
        }
        else
            Sleep(1);
@@ -381,6 +464,17 @@ int main(int argc, char* argv[])
     delete pDecoder;
     delete pEncoder;
     delete pFrameQueue;
+
+#ifdef ENABLE_DECODED_FRAME_SAVE
+    if (g_ReadbackSID)
+    {
+        cuStreamDestroy(g_ReadbackSID);
+    }
+    if (fpYUV)
+        fclose(fpYUV);
+
+    delete g_pFrameYUV;
+#endif
 
     cuvidCtxLockDestroy(ctxLock);
     __cu(cuCtxDestroy(cudaCtx));
