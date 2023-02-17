@@ -203,7 +203,7 @@ void SaveFrameAsYUV420(FILE* fpWriteYUV, unsigned char* pdst,
 
 
 
-#define ENABLE_DECODED_FRAME_SAVE
+//#define ENABLE_DECODED_FRAME_SAVE
 
 int main(int argc, char* argv[])
 {
@@ -229,7 +229,7 @@ int main(int argc, char* argv[])
     encodeConfig.b_quant_factor = DEFAULT_B_QFACTOR;  
     encodeConfig.i_quant_offset = DEFAULT_I_QOFFSET;
     encodeConfig.b_quant_offset = DEFAULT_B_QOFFSET;   
-    encodeConfig.presetGUID = NV_ENC_PRESET_DEFAULT_GUID;
+    encodeConfig.presetGUID = NV_ENC_PRESET_LOW_LATENCY_HQ_GUID;
     encodeConfig.pictureStruct = NV_ENC_PIC_STRUCT_FRAME;
 
     NVENCSTATUS nvStatus = CNvHWEncoder::ParseArguments(&encodeConfig, argc, argv);
@@ -275,6 +275,8 @@ int main(int argc, char* argv[])
     __cu(cuvidCtxLockCreate(&ctxLock, curCtx));
 
     //std::unique_ptr<FFmpegDemuxer> demuxer(new FFmpegDemuxer(m_pProvider));
+
+    cuCtxPushCurrent(curCtx);
 
     pSourcePath = encodeConfig.inputFileName;
 
