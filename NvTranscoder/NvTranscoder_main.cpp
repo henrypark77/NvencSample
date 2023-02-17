@@ -168,7 +168,7 @@ void PrintHelp()
 }
 
 
-void SaveFrameAsYUV(FILE* fpWriteYUV, unsigned char* pdst,
+void SaveFrameAsYUV420(FILE* fpWriteYUV, unsigned char* pdst,
     const unsigned char* psrc,
     int width, int height, int pitch)
 {
@@ -266,13 +266,7 @@ int main(int argc, char* argv[])
     printf("  CUDA Streams (%s) <g_ReadbackSID = %p>\n", ((g_ReadbackSID == 0) ? "Disabled" : "Enabled"), g_ReadbackSID);
 
     BYTE* g_pFrameYUV[2] = { NULL, };    
-    FILE* fpYUV = fopen("Decoded.yuv", "wb");
-
-    if (NULL == g_pFrameYUV[0])
-    {
-        result = cuMemAllocHost((void**)&g_pFrameYUV[0], (2432 * 1080 + 2432 * 1080 / 2));
-        result = cuMemAllocHost((void**)&g_pFrameYUV[1], (2432 * 1080 + 2432 * 1080 / 2));        
-    }
+    FILE* fpYUV = fopen("Decoded.yuv", "wb");   
 #endif
 
     CUcontext curCtx;
@@ -408,17 +402,8 @@ int main(int argc, char* argv[])
             }
             frmProcessed++;
 
-#ifdef ENABLE_DECODED_FRAME_SAVE            
-            cuvidCtxLock(ctxLock, 0);
-
-            result = cuMemcpyDtoHAsync(g_pFrameYUV[0], dMappedFrame, (pitch * stEncodeConfig.height * 3 / 2), g_ReadbackSID);
-            //result = cuMemcpyDtoH(&g_pFrameYUV[0], dMappedFrame, (pitch * decodedH * 3 / 2));
-
-            if (result != CUDA_SUCCESS)
-            {
-                printf("cuMemAllocHost returned %d\n", (int)result);
-            }
-            cuvidCtxUnlock(ctxLock, 0);
+#ifdef ENABLE_DECODED_FRAME_SAVE
+            pEncoder->CopyMemDtoHAsync(g_pFrameYUV, stEncodeConfig);
 #endif
 
             cuvidUnmapVideoFrame(pDecoder->GetDecoder(), dMappedFrame);
@@ -429,7 +414,7 @@ int main(int argc, char* argv[])
             if (fpYUV)
             {
                 //fwrite(&g_pFrameYUV[0], 1, decodedW * decodedH * 3 / 2, fpYUV);
-                SaveFrameAsYUV(fpYUV, g_pFrameYUV[1], g_pFrameYUV[0], encodeConfig.width, stEncodeConfig.height, pitch);
+                SaveFrameAsYUV420(fpYUV, g_pFrameYUV[1], g_pFrameYUV[0], encodeConfig.width, stEncodeConfig.height, pitch);
             }
 #endif
 
@@ -473,7 +458,9 @@ int main(int argc, char* argv[])
     if (fpYUV)
         fclose(fpYUV);
 
-    delete g_pFrameYUV;
+    cuMemFreeHost(g_pFrameYUV[0]);
+    cuMemFreeHost(g_pFrameYUV[1]);
+    delete [] g_pFrameYUV;
 #endif
 
     cuvidCtxLockDestroy(ctxLock);

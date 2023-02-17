@@ -242,3 +242,25 @@ NVENCSTATUS VideoEncoder::EncodeFrame(EncodeFrameConfig *pEncodeFrame, NV_ENC_PI
 
     return NV_ENC_SUCCESS;
 }
+
+NVENCSTATUS VideoEncoder::CopyMemDtoHAsync(BYTE** pYUV, EncodeFrameConfig& encConfig)
+{
+    CUresult result;
+#if 1
+    if (pYUV[0] == NULL)
+    {
+        result = cuMemAllocHost((void**)&pYUV[0], (encConfig.pitch * encConfig.height + encConfig.pitch * encConfig.height / 2));
+        result = cuMemAllocHost((void**)&pYUV[1], (encConfig.pitch * encConfig.height + encConfig.pitch * encConfig.height / 2));
+    }
+
+    cuvidCtxLock(m_ctxLock, 0);
+    result = cuMemcpyDtoHAsync(pYUV[0], encConfig.dptr, (encConfig.pitch * encConfig.height * 3 / 2), 0);    
+    cuvidCtxUnlock(m_ctxLock, 0);
+
+    if (result != CUDA_SUCCESS)
+    {
+        printf("cuMemAllocHost returned %d\n", (int)result);
+    }
+    return NV_ENC_SUCCESS;
+#endif
+}

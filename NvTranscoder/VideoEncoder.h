@@ -134,6 +134,8 @@ public:
     NVENCSTATUS               AllocateIOBuffers(EncodeConfig* pEncodeConfig);
     int32_t                   GetEncodedFrames() { return m_iEncodedFrames; }
 
+    NVENCSTATUS               CopyMemDtoHAsync(BYTE** pYUV, EncodeFrameConfig& encConfig);
+
 protected:
     NVENCSTATUS               ReleaseIOBuffers();
     NVENCSTATUS               FlushEncoder();
