@@ -42,7 +42,8 @@ NVENCSTATUS VideoEncoder::AllocateIOBuffers(EncodeConfig* pEncodeConfig)
         __cu(cuMemAllocPitch(&m_stEncodeBuffer[i].stInputBfr.pNV12devPtr,
             (size_t*)&m_stEncodeBuffer[i].stInputBfr.uNV12Stride,
             uInputWidth, uInputHeight * 3 / 2, 16));
-        __cu(cuvidCtxUnlock(m_ctxLock, 0));
+        __cu(cuMemAllocHost((void**)&m_stEncodeBuffer[i].stInputBfr.pSystemPtr, uInputWidth * uInputHeight * 3 / 2));
+        __cu(cuvidCtxUnlock(m_ctxLock, 0));        
 
         nvStatus = m_pNvHWEncoder->NvEncRegisterResource(NV_ENC_INPUT_RESOURCE_TYPE_CUDADEVICEPTR,
             (void*)m_stEncodeBuffer[i].stInputBfr.pNV12devPtr,
@@ -93,6 +94,7 @@ NVENCSTATUS VideoEncoder::ReleaseIOBuffers()
         __cu(cuvidCtxLock(m_ctxLock, 0));
         cuMemFree(m_stEncodeBuffer[i].stInputBfr.pNV12devPtr);
         __cu(cuvidCtxUnlock(m_ctxLock, 0));
+        cuMemFreeHost(m_stEncodeBuffer[i].stInputBfr.pSystemPtr);
 
         m_pNvHWEncoder->NvEncDestroyBitstreamBuffer(m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer);
         m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer = NULL;
@@ -213,7 +215,20 @@ NVENCSTATUS VideoEncoder::EncodeFrame(EncodeFrameConfig *pEncodeFrame, NV_ENC_PI
     memcpy2D.Height         = dwHeight*3/2;
     __cu(cuMemcpy2D(&memcpy2D));
 
+#if 0
+    memcpy2D.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+    memcpy2D.srcDevice = pEncodeBuffer->stInputBfr.pNV12devPtr;
+    memcpy2D.srcPitch = pEncodeFrame->pitch;
+    memcpy2D.dstMemoryType = CU_MEMORYTYPE_HOST;
+    memcpy2D.dstDevice = (CUdeviceptr)pEncodeBuffer->stInputBfr.pSystemPtr;
+    memcpy2D.dstPitch = pEncodeBuffer->stInputBfr.uNV12Stride;
+    memcpy2D.WidthInBytes = dwWidth;
+    memcpy2D.Height = dwHeight * 3 / 2;
+    __cu(cuMemcpy2D(&memcpy2D));
+#endif
+
     cuvidCtxUnlock(m_ctxLock, 0);
+
 
     nvStatus = m_pNvHWEncoder->NvEncMapInputResource(pEncodeBuffer->stInputBfr.nvRegisteredResource, &pEncodeBuffer->stInputBfr.hInputSurface);
     if (nvStatus != NV_ENC_SUCCESS)
