@@ -221,7 +221,7 @@ int main(int argc, char* argv[])
     encodeConfig.endFrameIdx = INT_MAX;
     encodeConfig.bitrate = 5000000;
     encodeConfig.rcMode = NV_ENC_PARAMS_RC_CONSTQP;
-    encodeConfig.gopLength = NVENC_INFINITE_GOPLENGTH;
+    encodeConfig.gopLength = 30;//NVENC_INFINITE_GOPLENGTH;
     encodeConfig.codec = NV_ENC_H264;
     encodeConfig.fps = 0;
     encodeConfig.qp = 28;
@@ -258,10 +258,10 @@ int main(int argc, char* argv[])
     __cu(cuDeviceGet(&device, encodeConfig.deviceID));
     __cu(cuCtxCreate(&cudaCtx, CU_CTX_SCHED_AUTO, device));
 
-    CUresult ret = CUDA_SUCCESS, result = CUDA_SUCCESS;
+    CUresult result = CUDA_SUCCESS;
 #ifdef ENABLE_DECODED_FRAME_SAVE
     CUstream           g_ReadbackSID = 0;
-    ret = cuStreamCreate(&g_ReadbackSID, 0);
+    result = cuStreamCreate(&g_ReadbackSID, 0);
 
     printf("  CUDA Streams (%s) <g_ReadbackSID = %p>\n", ((g_ReadbackSID == 0) ? "Disabled" : "Enabled"), g_ReadbackSID);
 
@@ -374,7 +374,7 @@ int main(int argc, char* argv[])
 
         CCtxAutoLock lck(ctxLock);
         // Push the current CUDA context (only if we are using CUDA decoding path)
-        CUresult result = cuCtxPushCurrent(curCtx);
+        result = cuCtxPushCurrent(curCtx);
 
         CUVIDPARSERDISPINFO pInfo;
         if (pFrameQueue->dequeue(&pInfo)) {
@@ -384,7 +384,7 @@ int main(int argc, char* argv[])
             oVPP.progressive_frame = pInfo.progressive_frame;
             oVPP.second_field = 0;
             oVPP.top_field_first = pInfo.top_field_first;
-            oVPP.unpaired_field = 0;// pInfo.repeat_first_field <= 0;//(pInfo.progressive_frame == 1 || pInfo.repeat_first_field <= 1);
+            oVPP.unpaired_field = (pInfo.progressive_frame == 1 || pInfo.repeat_first_field <= 1);
 
             result = cuvidMapVideoFrame(pDecoder->GetDecoder(), pInfo.picture_index, &dMappedFrame, &pitch, &oVPP);
 
