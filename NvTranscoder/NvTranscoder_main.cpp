@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
     EncodeConfig encodeConfig = { 0 };
     encodeConfig.endFrameIdx = INT_MAX;
     encodeConfig.bitrate = 5000000;
-    encodeConfig.rcMode = NV_ENC_PARAMS_RC_CONSTQP;
+    encodeConfig.rcMode = NV_ENC_PARAMS_RC_CBR;
     encodeConfig.gopLength = 30;//NVENC_INFINITE_GOPLENGTH;
     encodeConfig.codec = NV_ENC_H264;
     encodeConfig.fps = 0;
@@ -370,6 +370,8 @@ int main(int argc, char* argv[])
     //start encoding thread
     int frmProcessed = 0;
     int frmActual = 0;
+
+    NVENCSTATUS encStatus = NV_ENC_SUCCESS;
     while(!(pFrameQueue->isEndOfDecode() && pFrameQueue->isEmpty()) ) {
 
         CCtxAutoLock lck(ctxLock);
@@ -399,7 +401,9 @@ int main(int argc, char* argv[])
 
             int dropOrDuplicate = MatchFPS(fpsRatio, frmProcessed, frmActual);
             for (int i = 0; i <= dropOrDuplicate; i++) {
-                pEncoder->EncodeFrame(&stEncodeConfig, picType);
+                encStatus = pEncoder->EncodeFrame(&stEncodeConfig, picType);
+                if (encStatus != NV_ENC_SUCCESS)
+                    printf("Encode error %d\n", encStatus);
                 frmActual++;
             }
             frmProcessed++;
