@@ -189,9 +189,9 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
         oVideoDecodeCreateInfo.ulTargetHeight = targetHeight;
     }
     oVideoDecodeCreateInfo.display_area.left   = 0;
-    oVideoDecodeCreateInfo.display_area.right  = oVideoDecodeCreateInfo.ulTargetWidth;
+    oVideoDecodeCreateInfo.display_area.right = oFormat.coded_width;//oVideoDecodeCreateInfo.ulTargetWidth;
     oVideoDecodeCreateInfo.display_area.top    = 0;
-    oVideoDecodeCreateInfo.display_area.bottom = oVideoDecodeCreateInfo.ulTargetHeight;
+    oVideoDecodeCreateInfo.display_area.bottom = oFormat.coded_height;//oVideoDecodeCreateInfo.ulTargetHeight;
 
     oVideoDecodeCreateInfo.ulNumOutputSurfaces = 2;
     oVideoDecodeCreateInfo.ulCreationFlags = cudaVideoCreate_PreferCUVID;
